@@ -6,7 +6,7 @@ class ApiConstants {
   // Contoh: 'http://192.168.1.5:8080'
   // Untuk emulator Android: gunakan 'http://10.0.2.2:8080'
   // Untuk device fisik: gunakan IP lokal komputer kamu
-  static const String baseUrl = 'http://10.0.2.2:8080';
+  static const String baseUrl = 'http://192.168.1.10:8080';
 
   static const Duration connectTimeout = Duration(seconds: 10);
   static const Duration receiveTimeout = Duration(seconds: 45);
