@@ -1,0 +1,48 @@
+name: gizi_ai
+description: "Aplikasi analisis nutrisi makanan dari foto menggunakan AI"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # HTTP & API
+  http: ^1.2.2
+  dio: ^5.7.0
+
+  # Image Picker (kamera + galeri)
+  image_picker: ^1.1.2
+
+  # State Management (sama seperti pattern modern Flutter)
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # UI & Animations
+  flutter_animate: ^4.5.0
+  lottie: ^3.1.2
+  cached_network_image: ^3.4.1
+
+  # Utils
+  permission_handler: ^11.3.1
+  path_provider: ^2.1.4
+  shared_preferences: ^2.3.3
+  google_fonts: ^8.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  build_runner: ^2.4.13
+  riverpod_generator: ^2.6.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/animations/
