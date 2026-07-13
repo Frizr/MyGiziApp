@@ -3,109 +3,117 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"io"
+	"net/http"
+	"os"
+	"time"
 
 	"github.com/afrizal/gizi-ai/internal/model"
-	"google.golang.org/genai"
 )
 
-const nutritionPrompt = `You are a professional nutritionist AI. Analyze the food in this image and provide detailed nutritional information.
-
-Return ONLY a valid JSON object with this exact structure (no markdown, no extra text):
+const geminiPrompt = `You are a professional nutritionist. Analyze this image of food and provide the nutritional breakdown in JSON format.
+Your response MUST be a valid JSON object matching the following structure exactly:
 {
-  "dish_name": "Name of the dish in Indonesian",
-  "calories": 350.0,
-  "protein_g": 18.5,
-  "carbs_g": 45.2,
-  "fat_g": 12.1,
-  "fiber_g": 3.2,
-  "sugar_g": 5.0,
-  "serving_size": "1 porsi (±250g)",
-  "confidence": "high",
-  "notes": "Estimasi untuk 1 porsi standar. Nilai nutrisi dapat bervariasi tergantung cara masak."
+	"dish_name": "Name of the food",
+	"calories": 0.0,
+	"protein_g": 0.0,
+	"carbs_g": 0.0,
+	"fat_g": 0.0,
+	"fiber_g": 0.0,
+	"sugar_g": 0.0,
+	"serving_size": "Description of the portion (e.g., 1 plate, 1 bowl)",
+	"confidence": "high/medium/low",
+	"notes": "Any additional dietary notes or observations"
 }
+Only output the JSON object, with no markdown formatting, no code blocks, and no extra text.`
 
-Rules:
-- dish_name: nama makanan dalam Bahasa Indonesia
-- All numeric values must be numbers (not strings)
-- confidence: "high" if food is clearly visible, "medium" if partially visible, "low" if unclear
-- If you cannot identify food in the image, set dish_name to "Tidak terdeteksi" and all numbers to 0
-- Estimate for a typical single serving portion`
-
-// GeminiService handles communication with the Gemini Vision API.
 type GeminiService struct {
-	client *genai.Client
-	model  string
+	apiKey string
 }
 
-// NewGeminiService creates a new GeminiService instance.
-func NewGeminiService(apiKey string) (*GeminiService, error) {
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+func NewGeminiService() *GeminiService {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	return &GeminiService{
+		apiKey: apiKey,
+	}
+}
+
+func (s *GeminiService) AnalyzeFood(ctx context.Context, imageData []byte, mimeType string) (*model.NutritionResult, error) {
+	if s.apiKey == "" {
+		return nil, fmt.Errorf("GEMINI_API_KEY is not set in environment variables")
 	}
 
-	return &GeminiService{
-		client: client,
-		model:  "gemini-2.0-flash",
-	}, nil
-}
+	url := "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + s.apiKey
 
-// AnalyzeFood sends an image to Gemini Vision and returns parsed nutrition data.
-func (g *GeminiService) AnalyzeFood(ctx context.Context, imageData []byte, mimeType string) (*model.NutritionResult, error) {
-	contents := []*genai.Content{
-		{
-			Parts: []*genai.Part{
-				{Text: nutritionPrompt},
-				{
-					InlineData: &genai.Blob{
-						MIMEType: mimeType,
-						Data:     imageData,
+	base64Data := base64.StdEncoding.EncodeToString(imageData)
+
+	payload := map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"parts": []map[string]interface{}{
+					{"text": geminiPrompt},
+					{
+						"inline_data": map[string]interface{}{
+							"mime_type": mimeType,
+							"data":      base64Data,
+						},
 					},
 				},
 			},
-			Role: "user",
+		},
+		"generationConfig": map[string]interface{}{
+			"responseMimeType": "application/json",
 		},
 	}
 
-	resp, err := g.client.Models.GenerateContent(ctx, g.model, contents, nil)
+	payloadBytes, _ := json.Marshal(payload)
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payloadBytes))
 	if err != nil {
-		return nil, fmt.Errorf("gemini generate content failed: %w", err)
+		return nil, fmt.Errorf("failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("gemini api error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("gemini returned empty response")
+	var response struct {
+		Candidates []struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		} `json:"candidates"`
 	}
 
-	rawText := resp.Candidates[0].Content.Parts[0].Text
-	rawText = cleanJSON(rawText)
+	if err := json.Unmarshal(bodyBytes, &response); err != nil {
+		return nil, fmt.Errorf("failed to parse gemini response: %v", err)
+	}
+
+	if len(response.Candidates) == 0 || len(response.Candidates[0].Content.Parts) == 0 {
+		return nil, fmt.Errorf("gemini returned no content")
+	}
+
+	rawText := response.Candidates[0].Content.Parts[0].Text
 
 	var result model.NutritionResult
-	if err := json.NewDecoder(bytes.NewBufferString(rawText)).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to parse gemini response as JSON: %w\nraw: %s", err, rawText)
+	if err := json.Unmarshal([]byte(rawText), &result); err != nil {
+		return nil, fmt.Errorf("failed to decode json result: %v, raw text: %s", err, rawText)
 	}
 
 	return &result, nil
-}
-
-// Close is a no-op kept for API compatibility — genai.Client manages its own lifecycle.
-func (g *GeminiService) Close() {}
-
-// cleanJSON removes markdown code fences if Gemini wraps JSON in them.
-func cleanJSON(s string) string {
-	s = strings.TrimSpace(s)
-	if strings.HasPrefix(s, "```json") {
-		s = strings.TrimPrefix(s, "```json")
-		s = strings.TrimSuffix(s, "```")
-	} else if strings.HasPrefix(s, "```") {
-		s = strings.TrimPrefix(s, "```")
-		s = strings.TrimSuffix(s, "```")
-	}
-	return strings.TrimSpace(s)
 }

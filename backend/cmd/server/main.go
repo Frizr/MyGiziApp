@@ -22,22 +22,14 @@ func main() {
 		log.Println("⚠️  .env tidak ditemukan, menggunakan environment variable sistem")
 	}
 
-	apiKey := os.Getenv("GEMINI_API_KEY")
-	if apiKey == "" {
-		log.Fatal("❌ GEMINI_API_KEY tidak ditemukan. Set di .env atau environment variable")
-	}
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	// Setup Gemini service
-	geminiSvc, err := service.NewGeminiService(apiKey)
-	if err != nil {
-		log.Fatalf("❌ Gagal inisialisasi Gemini service: %v", err)
-	}
-	defer geminiSvc.Close()
+	// Initialize OpenRouter Service
+	openRouterService := service.NewGeminiService()
+	nutritionHandler := handler.NewNutritionHandler(openRouterService)
 
 	// Setup Gin router
 	if os.Getenv("GIN_MODE") == "release" {
@@ -61,8 +53,6 @@ func main() {
 	// Limit upload: max 10MB
 	router.MaxMultipartMemory = 10 << 20
 
-	// Routes
-	nutritionHandler := handler.NewNutritionHandler(geminiSvc)
 
 	api := router.Group("/")
 	{
