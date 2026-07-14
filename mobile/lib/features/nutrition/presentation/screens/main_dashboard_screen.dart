@@ -19,10 +19,15 @@ class MainDashboardScreen extends HookConsumerWidget {
       const LeaderboardPage(),
     ];
 
+    final titles = ['Dashboard', 'Input Makanan', 'Leaderboard'];
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
-        title: const Text('MyGiziApp', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(
+          titles[currentIndex.value],
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
         backgroundColor: AppTheme.surface,
         elevation: 0,
       ),

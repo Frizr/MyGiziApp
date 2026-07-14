@@ -1,21 +1,17 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:gizi_ai/core/services/device_id_service.dart';
 import '../models/daily_log_model.dart';
 import 'package:intl/intl.dart';
 
 final nutritionRepositoryProvider = Provider<NutritionRepository>((ref) {
-  return NutritionRepository(
-    FirebaseFirestore.instance,
-    FirebaseAuth.instance,
-  );
+  return NutritionRepository(FirebaseFirestore.instance);
 });
 
 class NutritionRepository {
   final FirebaseFirestore _firestore;
-  final FirebaseAuth _auth;
 
-  NutritionRepository(this._firestore, this._auth);
+  NutritionRepository(this._firestore);
 
   String get _todayDateStr {
     final now = DateTime.now();
@@ -23,9 +19,9 @@ class NutritionRepository {
   }
 
   String get _currentUid {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('User not logged in');
-    return user.uid;
+    final id = DeviceIdService.cachedId;
+    if (id == null) throw Exception('Device ID not initialized');
+    return id;
   }
 
   Future<void> addManualMeal(MealItem meal) async {
@@ -38,11 +34,10 @@ class NutritionRepository {
       final snapshot = await transaction.get(docRef);
 
       if (!snapshot.exists) {
-        // Create new log if doesn't exist (assuming target 2000 for now)
         final newLog = DailyLogModel(
           uid: uid,
           date: date,
-          targetCalories: 2000, 
+          targetCalories: 2000,
           currentCalories: meal.calories,
           currentProtein: meal.protein,
           currentCarbs: meal.carbs,
@@ -51,9 +46,8 @@ class NutritionRepository {
         );
         transaction.set(docRef, newLog.toJson());
       } else {
-        // Update existing log
         final log = DailyLogModel.fromJson(snapshot.data()!);
-        
+
         final updatedMeals = List<MealItem>.from(log.meals)..add(meal);
         final updatedLog = log.copyWith(
           currentCalories: log.currentCalories + meal.calories,
@@ -62,15 +56,28 @@ class NutritionRepository {
           currentFat: log.currentFat + meal.fat,
           meals: updatedMeals,
         );
-        
+
         transaction.update(docRef, updatedLog.toJson());
       }
-      
-      // Update User Score (+10 per meal entry)
+
+      // Update user score (+10 per meal entry) — use device ID as user doc
       final userRef = _firestore.collection('users').doc(uid);
-      transaction.update(userRef, {
-        'score': FieldValue.increment(10)
-      });
+      final userSnap = await transaction.get(userRef);
+      if (userSnap.exists) {
+        transaction.update(userRef, {
+          'score': FieldValue.increment(10),
+        });
+      } else {
+        // Create user doc for anonymous device
+        transaction.set(userRef, {
+          'uid': uid,
+          'name': 'Pengguna',
+          'email': '',
+          'score': 10,
+          'level': 1,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+      }
     });
   }
 }

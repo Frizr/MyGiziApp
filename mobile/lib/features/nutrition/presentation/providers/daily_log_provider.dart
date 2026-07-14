@@ -1,16 +1,20 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:gizi_ai/core/services/device_id_service.dart';
 import '../../data/models/daily_log_model.dart';
 
-final todayLogStreamProvider = StreamProvider.autoDispose<DailyLogModel?>((ref) {
-  final user = FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    return Stream.value(null);
-  }
+/// Provides device ID as a synchronous cached value.
+/// DeviceIdService.getDeviceId() is called in main() before runApp,
+/// so the cached value is always available.
+final deviceIdProvider = Provider<String>((ref) {
+  // This is safe because we pre-loaded it in main()
+  return DeviceIdService.cachedId!;
+});
 
-  final uid = user.uid;
+/// Stream today's daily log from Firestore using device ID (no auth).
+final todayLogStreamProvider = StreamProvider.autoDispose<DailyLogModel?>((ref) {
+  final uid = ref.watch(deviceIdProvider);
   final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
   final docId = '${uid}_$dateStr';
 
