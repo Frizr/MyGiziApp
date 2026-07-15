@@ -7,6 +7,7 @@ class MealItem {
   final double protein;
   final double carbs;
   final double fat;
+  final String? imagePath; // Path to food photo (local or cloud storage URL)
 
   MealItem({
     required this.time,
@@ -15,6 +16,7 @@ class MealItem {
     this.protein = 0,
     this.carbs = 0,
     this.fat = 0,
+    this.imagePath,
   });
 
   factory MealItem.fromJson(Map<String, dynamic> json) {
@@ -25,6 +27,7 @@ class MealItem {
       protein: (json['protein'] ?? 0).toDouble(),
       carbs: (json['carbs'] ?? 0).toDouble(),
       fat: (json['fat'] ?? 0).toDouble(),
+      imagePath: json['imagePath'] as String?,
     );
   }
 
@@ -36,6 +39,7 @@ class MealItem {
       'protein': protein,
       'carbs': carbs,
       'fat': fat,
+      if (imagePath != null) 'imagePath': imagePath,
     };
   }
 }

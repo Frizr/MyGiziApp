@@ -18,6 +18,7 @@ class ManualInputNotifier extends StateNotifier<AsyncValue<void>> {
     double protein = 0,
     double carbs = 0,
     double fat = 0,
+    String? imagePath,
   }) async {
     state = const AsyncValue.loading();
     try {
@@ -28,8 +29,9 @@ class ManualInputNotifier extends StateNotifier<AsyncValue<void>> {
         protein: protein,
         carbs: carbs,
         fat: fat,
+        imagePath: imagePath,
       );
-      
+
       await _repository.addManualMeal(meal);
       state = const AsyncValue.data(null);
     } catch (e, st) {
